@@ -1,0 +1,2111 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Motion Mirror</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    background: radial-gradient(circle at 50% 20%, #241a4a 0%, #100b26 60%, #0a0716 100%);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #fff;
+  }
+
+  /* ---------- shared overlay screens ---------- */
+  .screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: 20px;
+    text-align: center;
+    overflow-y: auto;
+    z-index: 30;
+  }
+  .screen[hidden] { display: none; }
+
+  #start-screen h1 {
+    font-size: clamp(26px, 5.5vw, 48px);
+    margin: 0 0 4px;
+    background: linear-gradient(90deg, #7dd3fc, #f0abfc, #fde68a);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  #start-screen p {
+    font-size: clamp(14px, 2.4vw, 19px);
+    color: #cbd5f5;
+    margin: 0;
+    max-width: 34em;
+  }
+  .section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .section h2 {
+    font-size: clamp(14px, 2.6vw, 20px);
+    color: #cbd5f5;
+    margin: 0;
+    font-weight: 600;
+  }
+  .choice-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+  }
+  .choice-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    border: 3px solid transparent;
+    border-radius: 22px;
+    background: rgba(255,255,255,0.08);
+    padding: 14px 20px;
+    font-size: clamp(30px, 6vw, 46px);
+    cursor: pointer;
+    color: #fff;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.25);
+    transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+  .choice-btn span {
+    font-size: clamp(11px, 1.8vw, 14px);
+    color: #cbd5f5;
+    font-weight: 600;
+  }
+  .choice-btn:active { transform: translateY(3px); }
+  .choice-btn.selected {
+    border-color: #f0abfc;
+    background: rgba(240,171,252,0.18);
+  }
+  #start-btn {
+    font-size: clamp(20px, 4vw, 30px);
+    padding: 16px 46px;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #7dd3fc, #a78bfa);
+    color: #171225;
+    font-weight: 700;
+    box-shadow: 0 8px 0 #4c3a8f;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  #start-btn:active {
+    box-shadow: 0 3px 0 #4c3a8f;
+    transform: translateY(5px);
+  }
+
+  #loading-screen, #error-screen { gap: 14px; }
+  .spinner {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    border: 6px solid rgba(255,255,255,0.15);
+    border-top-color: #f0abfc;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #error-screen p { color: #fecaca; max-width: 30em; }
+  .retry-btn {
+    font-size: 18px;
+    padding: 12px 30px;
+    border: none;
+    border-radius: 999px;
+    background: #f0abfc;
+    color: #171225;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  /* ---------- game screen ---------- */
+  #game {
+    position: fixed;
+    inset: 0;
+    display: none;
+  }
+  #game.show { display: block; }
+  #stage { position: absolute; inset: 0; display: block; }
+
+  #fs-btn, #home-btn {
+    position: absolute;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    font-size: 19px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 30;
+    backdrop-filter: blur(4px);
+  }
+  #fs-btn.show, #home-btn.show { display: flex; }
+  #fs-btn {
+    top: max(24px, env(safe-area-inset-top) + 14px);
+    right: max(24px, env(safe-area-inset-right) + 14px);
+  }
+  #home-btn {
+    top: max(24px, env(safe-area-inset-top) + 14px);
+    left: max(24px, env(safe-area-inset-left) + 14px);
+  }
+  #clear-btn {
+    position: absolute;
+    bottom: max(20px, env(safe-area-inset-bottom) + 14px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: none;
+    border-radius: 999px;
+    padding: 10px 24px;
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    z-index: 20;
+    backdrop-filter: blur(4px);
+  }
+  #clear-btn.show { display: flex; }
+  .mini-palette {
+    position: absolute;
+    top: max(24px, env(safe-area-inset-top) + 14px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 7px;
+    max-width: 90vw;
+    padding: 7px 9px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.14);
+    backdrop-filter: blur(4px);
+    z-index: 20;
+  }
+  .mini-palette.show { display: flex; }
+  #truck-hud {
+    gap: 16px;
+    padding: 8px 18px;
+    font-size: 17px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.28);
+    padding: 0;
+    cursor: pointer;
+  }
+  .swatch.eraser {
+    background: linear-gradient(135deg, #f1f5f9, #cbd5e1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .swatch.selected {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.45);
+  }
+  #win-banner {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 25;
+    background: rgba(10,6,24,0.55);
+  }
+  #win-banner:not([hidden]) { display: flex; }
+  .win-card {
+    background: rgba(26,19,48,0.92);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 24px;
+    padding: 2rem 2.4rem;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .win-trophy {
+    font-size: clamp(56px, 11vw, 96px);
+    line-height: 1;
+    margin-bottom: 0.6rem;
+    animation: trophy-bounce 1.1s ease-in-out infinite;
+  }
+  @keyframes trophy-bounce {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-10px) scale(1.08); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .win-trophy { animation: none; }
+  }
+  .win-title {
+    font-size: clamp(24px, 5vw, 38px);
+    font-weight: 800;
+    margin-bottom: 0.4rem;
+    background: linear-gradient(90deg, #7dd3fc, #f0abfc, #fde68a);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .win-sub {
+    font-size: clamp(14px, 2.4vw, 18px);
+    color: #cbd5f5;
+    margin-bottom: 1.4rem;
+  }
+  #win-again-btn {
+    font-size: 18px;
+    font-weight: 700;
+    padding: 12px 32px;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #7dd3fc, #a78bfa);
+    color: #171225;
+    cursor: pointer;
+  }
+
+  #hint {
+    position: absolute;
+    top: max(60px, env(safe-area-inset-top) + 56px);
+    left: 5%;
+    right: 5%;
+    text-align: center;
+    color: #f5f3ff;
+    font-size: clamp(14px, 2.4vw, 20px);
+    font-weight: 600;
+    pointer-events: none;
+    z-index: 15;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    transition: opacity 0.4s ease;
+  }
+</style>
+</head>
+<body>
+
+  <div id="start-screen" class="screen">
+    <h1>&#10024; Motion Mirror &#10024;</h1>
+
+    <div class="section">
+      <h2>Choose what happens on screen</h2>
+      <div id="mode-select" class="choice-row">
+        <button class="choice-btn selected" data-mode="skeleton">&#129460;<span>Skeleton Buddy</span></button>
+        <button class="choice-btn" data-mode="bubbles">&#129767;<span>Pop the Bubbles</span></button>
+        <button class="choice-btn" data-mode="sparkle">&#10024;<span>Sparkle Trail</span></button>
+        <button class="choice-btn" data-mode="saber">&#9876;&#65039;<span>Lightsaber</span></button>
+        <button class="choice-btn" data-mode="paint">&#127912;<span>Color Paint</span></button>
+        <button class="choice-btn" data-mode="ocean">&#128032;<span>Fish Tank</span></button>
+        <button class="choice-btn" data-mode="trucks">&#128667;<span>Truck Derby</span></button>
+        <button class="choice-btn" data-mode="race">&#127937;<span>Truck Race</span></button>
+      </div>
+    </div>
+
+    <button id="start-btn">Let's Move!</button>
+  </div>
+
+  <div id="loading-screen" class="screen" hidden>
+    <div class="spinner"></div>
+    <p id="loading-text">Waking up the camera...</p>
+  </div>
+
+  <div id="error-screen" class="screen" hidden>
+    <h1>&#128565;</h1>
+    <p id="error-text">We need camera access to play. Please allow the camera and try again.</p>
+    <button class="retry-btn" id="retry-btn">Try Again</button>
+  </div>
+
+  <div id="game">
+    <button id="fs-btn">&#9974;</button>
+    <button id="home-btn">&#127968;</button>
+    <button id="clear-btn">&#129529; Clear</button>
+    <div id="paint-palette" class="mini-palette">
+      <button class="swatch selected" data-color="#ef4444" style="background:#ef4444"></button>
+      <button class="swatch" data-color="#f97316" style="background:#f97316"></button>
+      <button class="swatch" data-color="#facc15" style="background:#facc15"></button>
+      <button class="swatch" data-color="#22c55e" style="background:#22c55e"></button>
+      <button class="swatch" data-color="#3b82f6" style="background:#3b82f6"></button>
+      <button class="swatch" data-color="#a855f7" style="background:#a855f7"></button>
+      <button class="swatch" data-color="#ec4899" style="background:#ec4899"></button>
+      <button class="swatch" data-color="#000000" style="background:#000000"></button>
+      <button class="swatch eraser" data-color="eraser" title="Eraser">&#129533;</button>
+    </div>
+    <div id="saber-palette" class="mini-palette">
+      <button class="swatch selected" data-hue="195" style="background:hsl(195,90%,55%)"></button>
+      <button class="swatch" data-hue="50" style="background:hsl(50,95%,55%)"></button>
+      <button class="swatch" data-hue="140" style="background:hsl(140,85%,45%)"></button>
+    </div>
+    <div id="truck-hud" class="mini-palette">
+      <span id="truck-score-red">&#128308; 0</span>
+      <span id="truck-score-blue">&#128309; 0</span>
+    </div>
+    <div id="hint"></div>
+    <canvas id="stage"></canvas>
+    <div id="win-banner" hidden>
+      <div class="win-card" id="win-card">
+        <div class="win-trophy">&#127942;</div>
+        <div class="win-title" id="win-title"></div>
+        <div class="win-sub" id="win-sub"></div>
+        <button id="win-again-btn">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+import { PoseLandmarker, FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+
+const startScreen = document.getElementById('start-screen');
+const loadingScreen = document.getElementById('loading-screen');
+const loadingText = document.getElementById('loading-text');
+const errorScreen = document.getElementById('error-screen');
+const errorText = document.getElementById('error-text');
+const retryBtn = document.getElementById('retry-btn');
+const startBtn = document.getElementById('start-btn');
+const modeSelect = document.getElementById('mode-select');
+const game = document.getElementById('game');
+const fsBtn = document.getElementById('fs-btn');
+const homeBtn = document.getElementById('home-btn');
+const clearBtn = document.getElementById('clear-btn');
+const paintPalette = document.getElementById('paint-palette');
+const saberPalette = document.getElementById('saber-palette');
+const truckHud = document.getElementById('truck-hud');
+const truckScoreRed = document.getElementById('truck-score-red');
+const truckScoreBlue = document.getElementById('truck-score-blue');
+const winBanner = document.getElementById('win-banner');
+const winCard = document.getElementById('win-card');
+const winTitle = document.getElementById('win-title');
+const winSub = document.getElementById('win-sub');
+const winAgainBtn = document.getElementById('win-again-btn');
+let winAgainHandler = null;
+
+function showWin(title, message, onAgain, accent) {
+  winTitle.textContent = title;
+  winSub.textContent = message;
+  if (accent) {
+    winCard.style.borderColor = accent;
+    winCard.style.boxShadow = `0 12px 40px ${accent}66`;
+    winCard.style.background = `linear-gradient(165deg, ${accent}33, rgba(26,19,48,0.95))`;
+    winTitle.style.background = 'none';
+    winTitle.style.webkitBackgroundClip = 'unset';
+    winTitle.style.backgroundClip = 'unset';
+    winTitle.style.color = accent;
+  } else {
+    winCard.style.borderColor = '';
+    winCard.style.boxShadow = '';
+    winCard.style.background = '';
+    winTitle.style.background = '';
+    winTitle.style.webkitBackgroundClip = '';
+    winTitle.style.backgroundClip = '';
+    winTitle.style.color = '';
+  }
+  winBanner.hidden = false;
+  winAgainHandler = onAgain;
+  spawnClapBlast(cssW / 2, cssH / 2);
+  playBlast();
+}
+function hideWin() {
+  winBanner.hidden = true;
+  winAgainHandler = null;
+}
+winAgainBtn.addEventListener('click', () => {
+  const handler = winAgainHandler;
+  hideWin();
+  if (handler) handler();
+});
+const hint = document.getElementById('hint');
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+
+let mode = 'skeleton';
+let stream = null;
+let video = null;
+let poseLandmarker = null;
+let rafId = null;
+let audioCtx = null;
+
+const HINTS = {
+  skeleton: "Move around — I'll draw your skeleton in neon light!",
+  bubbles: 'Touch the bubbles with your hands or feet to pop them!',
+  sparkle: 'Wave your arms and legs to leave a sparkle trail!',
+  saber: 'Move your hands to swing your lightsabers!',
+  paint: 'Move your hands to paint the whole screen with color!',
+  ocean: 'Blow bubbles, shoo fish with your hands and feet, or open your mouth to eat one!',
+  trucks: 'Drive your trucks with each hand and collect the coins!',
+  race: 'Move each hand left and right to dodge — when time runs out, hold your hand up high to win!',
+};
+
+/* ---------- landmark indices ---------- */
+const NOSE = 0, L_EAR = 7, R_EAR = 8, L_SHOULDER = 11, R_SHOULDER = 12, L_ELBOW = 13, R_ELBOW = 14,
+      L_WRIST = 15, R_WRIST = 16, L_HIP = 23, R_HIP = 24, L_KNEE = 25,
+      R_KNEE = 26, L_ANKLE = 27, R_ANKLE = 28;
+const TRACKED = [NOSE, L_EAR, R_EAR, L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW, L_WRIST, R_WRIST,
+                 L_HIP, R_HIP, L_KNEE, R_KNEE, L_ANKLE, R_ANKLE];
+const BONES = [
+  [L_SHOULDER, R_SHOULDER], [L_SHOULDER, L_ELBOW], [L_ELBOW, L_WRIST],
+  [R_SHOULDER, R_ELBOW], [R_ELBOW, R_WRIST],
+  [L_SHOULDER, L_HIP], [R_SHOULDER, R_HIP], [L_HIP, R_HIP],
+  [L_HIP, L_KNEE], [L_KNEE, L_ANKLE], [R_HIP, R_KNEE], [R_KNEE, R_ANKLE],
+];
+const EMITTERS = [L_WRIST, R_WRIST];
+const COLLIDERS = [L_WRIST, R_WRIST, L_ANKLE, R_ANKLE];
+const PIN_REF = { [L_WRIST]: L_ELBOW, [R_WRIST]: R_ELBOW, [L_ANKLE]: L_KNEE, [R_ANKLE]: R_KNEE };
+
+const NEAR_REF = { [L_WRIST]: L_SHOULDER, [R_WRIST]: R_SHOULDER, [L_ANKLE]: L_HIP, [R_ANKLE]: R_HIP };
+
+function pruneImplausible(pts) {
+  const scale = (pts[L_SHOULDER] && pts[R_SHOULDER])
+    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
+    : 140;
+  const maxReach = scale * 1.7;
+  const minReach = scale * 0.3;
+  for (const joint in PIN_REF) {
+    const j = Number(joint), ref = PIN_REF[joint];
+    if (!pts[j] || !pts[ref]) continue;
+    const d = Math.hypot(pts[j][0] - pts[ref][0], pts[j][1] - pts[ref][1]);
+    if (d > maxReach || d < minReach) {
+      delete pts[j];
+      continue;
+    }
+    const near = pts[NEAR_REF[j]];
+    if (near && Math.hypot(pts[j][0] - near[0], pts[j][1] - near[1]) < minReach) {
+      delete pts[j];
+    }
+  }
+}
+
+function computeTipPoints(pts) {
+  const scale = (pts[L_SHOULDER] && pts[R_SHOULDER])
+    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
+    : 140;
+  const offset = scale * 0.28;
+  const tips = {};
+  for (const joint in PIN_REF) {
+    const j = Number(joint), ref = PIN_REF[joint];
+    if (!pts[j]) continue;
+    if (!pts[ref]) { tips[j] = pts[j]; continue; }
+    const dx = pts[j][0] - pts[ref][0], dy = pts[j][1] - pts[ref][1];
+    const len = Math.hypot(dx, dy) || 1;
+    tips[j] = [pts[j][0] + (dx / len) * offset, pts[j][1] + (dy / len) * offset];
+  }
+  return tips;
+}
+
+const smoothed = {};
+const history = {};
+let haveAnySmoothed = false;
+let lastPoseTime = 0;
+
+const VIS_ON = 0.72;
+const VIS_OFF = 0.42;
+
+function median3(a, b, c) {
+  return a + b + c - Math.max(a, b, c) - Math.min(a, b, c);
+}
+
+function updateSmoothed(landmarks) {
+  if (!landmarks) return;
+  for (const i of TRACKED) {
+    const lm = landmarks[i];
+    if (!lm) continue;
+    const vis = lm.visibility === undefined ? 1 : lm.visibility;
+    let prev = smoothed[i];
+    if (!prev) prev = smoothed[i] = { x: lm.x, y: lm.y, visible: false };
+    if (vis >= VIS_ON) prev.visible = true;
+    else if (vis < VIS_OFF) prev.visible = false;
+    if (prev.visible) {
+      let h = history[i];
+      if (!h) h = history[i] = { x: [lm.x, lm.x, lm.x], y: [lm.y, lm.y, lm.y] };
+      h.x[0] = h.x[1]; h.x[1] = h.x[2]; h.x[2] = lm.x;
+      h.y[0] = h.y[1]; h.y[1] = h.y[2]; h.y[2] = lm.y;
+      const targetX = median3(h.x[0], h.x[1], h.x[2]);
+      const targetY = median3(h.y[0], h.y[1], h.y[2]);
+      const dist = Math.hypot(targetX - prev.x, targetY - prev.y);
+      const f = dist < 0.014 ? 0.09 : 0.35;
+      prev.x += (targetX - prev.x) * f;
+      prev.y += (targetY - prev.y) * f;
+    }
+  }
+  haveAnySmoothed = true;
+  lastPoseTime = performance.now();
+}
+
+/* ---------- canvas sizing & cover-crop math ---------- */
+let cssW = 0, cssH = 0, dpr = 1;
+function resizeCanvas() {
+  cssW = window.innerWidth;
+  cssH = window.innerHeight;
+  dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  resizePaintCanvasIfNeeded();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function coverCrop(srcW, srcH, dstW, dstH) {
+  const srcRatio = srcW / srcH, dstRatio = dstW / dstH;
+  let sx, sy, sw, sh;
+  if (srcRatio > dstRatio) {
+    sh = srcH; sw = srcH * dstRatio; sx = (srcW - sw) / 2; sy = 0;
+  } else {
+    sw = srcW; sh = srcW / dstRatio; sx = 0; sy = (srcH - sh) / 2;
+  }
+  return { sx, sy, sw, sh };
+}
+
+function toCanvasXY(nx, ny, crop, videoW, videoH) {
+  const px = nx * videoW, py = ny * videoH;
+  return [(px - crop.sx) / crop.sw * cssW, (py - crop.sy) / crop.sh * cssH];
+}
+
+/* ---------- particles (shared by bubbles + sparkle) ---------- */
+let particles = [];
+function spawnBurst(x, y, hue, count) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 60 + Math.random() * 160;
+    particles.push({
+      x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+      life: 0, maxLife: 0.5 + Math.random() * 0.4,
+      size: 3 + Math.random() * 4, hue,
+    });
+  }
+}
+function spawnSparkle(x, y) {
+  const ang = Math.random() * Math.PI * 2;
+  const spd = 15 + Math.random() * 70;
+  particles.push({
+    x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 25,
+    life: 0, maxLife: 1.4 + Math.random() * 1.0,
+    size: 4 + Math.random() * 6, hue: Math.random() * 360,
+  });
+}
+let shockwaves = [];
+function spawnClapBlast(x, y) {
+  shockwaves.push({ x, y, r: 10, maxR: 320 + Math.random() * 120, t: 0, maxAge: 0.55, hue: Math.random() * 360 });
+  shockwaves.push({ x, y, r: 10, maxR: 520 + Math.random() * 160, t: 0, maxAge: 0.75, hue: Math.random() * 360 });
+
+  const rings = 6;
+  for (let ring = 0; ring < rings; ring++) {
+    const count = 55;
+    const baseSpd = 160 + ring * 200;
+    const hue = Math.random() * 360;
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2 + (Math.random() * 0.3 - 0.15);
+      const spd = baseSpd + Math.random() * 140;
+      particles.push({
+        x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 0, maxLife: 1.1 + Math.random() * 1.0,
+        size: 7 + Math.random() * 10, hue: hue + (Math.random() * 40 - 20),
+      });
+    }
+  }
+  for (let i = 0; i < 60; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 40 + Math.random() * 150;
+    particles.push({
+      x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+      life: 0, maxLife: 0.35 + Math.random() * 0.3,
+      size: 8 + Math.random() * 7, hue: 48,
+    });
+  }
+}
+function updateShockwaves(dt) {
+  for (const s of shockwaves) {
+    s.t += dt;
+    s.r += (s.maxR - s.r) * Math.min(1, dt * 6);
+  }
+  shockwaves = shockwaves.filter(s => s.t < s.maxAge);
+}
+function drawShockwaves() {
+  for (const s of shockwaves) {
+    const t = Math.max(0, 1 - s.t / s.maxAge);
+    ctx.save();
+    ctx.globalAlpha = t * 0.8;
+    ctx.shadowColor = `hsl(${s.hue}, 90%, 70%)`;
+    ctx.shadowBlur = 22;
+    ctx.strokeStyle = `hsl(${s.hue}, 90%, 78%)`;
+    ctx.lineWidth = 5 * t + 1.5;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+function updateParticles(dt) {
+  for (const p of particles) {
+    p.life += dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.97;
+    p.vy = p.vy * 0.97 + 40 * dt;
+  }
+  particles = particles.filter(p => p.life < p.maxLife);
+  if (particles.length > 1700) particles.splice(0, particles.length - 1700);
+}
+function drawParticles() {
+  for (const p of particles) {
+    const t = 1 - p.life / p.maxLife;
+    const sat = p.sat !== undefined ? p.sat : 95;
+    const light = p.light !== undefined ? p.light : 72;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, t);
+    ctx.shadowColor = `hsl(${p.hue}, ${sat}%, ${Math.min(light + 8, 85)}%)`;
+    ctx.shadowBlur = p.size * t * 1.8;
+    ctx.fillStyle = `hsl(${p.hue}, ${sat}%, ${light}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * t, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- bubbles ---------- */
+let bubbles = [];
+function neonHue() {
+  const bases = [205, 265, 320];
+  return bases[Math.floor(Math.random() * bases.length)] + (Math.random() * 24 - 12);
+}
+let bubblesWinShown = false;
+function randBubble() {
+  return {
+    x: 60 + Math.random() * (cssW - 120),
+    y: 100 + Math.random() * (cssH - 220),
+    r: 30 + Math.random() * 26,
+    hue: neonHue(),
+    phase: Math.random() * Math.PI * 2,
+    driftPhase: Math.random() * Math.PI * 2,
+    popped: false,
+  };
+}
+function initBubbles() {
+  bubbles = [];
+  bubblesWinShown = false;
+  const count = cssW < 700 ? 10 : 15;
+  for (let i = 0; i < count; i++) bubbles.push(randBubble());
+}
+function bubblePos(b) {
+  return [
+    b.x + Math.sin(b.driftPhase) * 16,
+    b.y + Math.sin(b.phase) * 20,
+  ];
+}
+function updateBubbles(dt, now, handPoints) {
+  for (const b of bubbles) {
+    b.phase += dt * 0.9;
+    b.driftPhase += dt * 0.55;
+    const [bx, by] = bubblePos(b);
+    for (const [hx, hy] of handPoints) {
+      const dx = hx - bx, dy = hy - by;
+      if (dx * dx + dy * dy < (b.r + 50) * (b.r + 50)) {
+        b.popped = true;
+        spawnBurst(bx, by, b.hue, 18);
+        playPop();
+        break;
+      }
+    }
+  }
+  bubbles = bubbles.filter(b => !b.popped);
+  if (bubbles.length === 0 && !bubblesWinShown) {
+    bubblesWinShown = true;
+    showWin('You are the winner!', '🎈 You popped them all! 🎈', initBubbles);
+  }
+}
+function drawBubbles() {
+  for (const b of bubbles) {
+    const [bx, by] = bubblePos(b);
+    ctx.save();
+    ctx.shadowColor = `hsla(${b.hue}, 95%, 65%, 0.9)`;
+    ctx.shadowBlur = b.r * 0.7;
+    const grad = ctx.createRadialGradient(bx - b.r * 0.35, by - b.r * 0.35, b.r * 0.1, bx, by, b.r);
+    grad.addColorStop(0, `hsla(${b.hue}, 100%, 88%, 0.9)`);
+    grad.addColorStop(0.7, `hsla(${b.hue}, 100%, 65%, 0.55)`);
+    grad.addColorStop(1, `hsla(${b.hue}, 100%, 58%, 0.25)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(bx, by, b.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `hsla(${b.hue}, 100%, 92%, 0.85)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* ---------- clap blast (sparkle mode) ---------- */
+let clapReady = true;
+function checkClap(pts, tips, now) {
+  if (!(tips[L_WRIST] && tips[R_WRIST])) return;
+  const shoulderDist = (pts[L_SHOULDER] && pts[R_SHOULDER])
+    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
+    : 140;
+  const dist = Math.hypot(tips[L_WRIST][0] - tips[R_WRIST][0], tips[L_WRIST][1] - tips[R_WRIST][1]);
+  if (dist < shoulderDist * 0.5 && clapReady) {
+    const mx = (tips[L_WRIST][0] + tips[R_WRIST][0]) / 2;
+    const my = (tips[L_WRIST][1] + tips[R_WRIST][1]) / 2;
+    spawnClapBlast(mx, my);
+    playBlast();
+    clapReady = false;
+  } else if (dist > shoulderDist * 0.9) {
+    clapReady = true;
+  }
+}
+
+/* ---------- audio ---------- */
+function playPop() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(520 + Math.random() * 200, t);
+  osc.frequency.exponentialRampToValueAtTime(180, t + 0.15);
+  gain.gain.setValueAtTime(0.18, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.17);
+}
+function playBlast() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(220, t);
+  osc.frequency.exponentialRampToValueAtTime(880, t + 0.12);
+  osc.frequency.exponentialRampToValueAtTime(340, t + 0.32);
+  gain.gain.setValueAtTime(0.001, t);
+  gain.gain.linearRampToValueAtTime(0.3, t + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.36);
+}
+/* ---------- lightsaber ---------- */
+let saberHue = 195;
+const TRAIL_MAX_AGE = 350;
+let sabreTrailL = [];
+let sabreTrailR = [];
+
+function drawSaberSegment(x1, y1, x2, y2, width, color, glow, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = glow;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function updateAndDrawBlade(trail, wristPt, elbowPt, shoulderDist, now, color) {
+  if (wristPt) {
+    let ax = 0, ay = -1;
+    if (elbowPt) {
+      ax = wristPt[0] - elbowPt[0];
+      ay = wristPt[1] - elbowPt[1];
+      const len = Math.hypot(ax, ay) || 1;
+      ax /= len; ay /= len;
+    }
+    const bladeLen = shoulderDist * 2.4;
+    const tip = [wristPt[0] + ax * bladeLen, wristPt[1] + ay * bladeLen];
+    trail.push({ x1: wristPt[0], y1: wristPt[1], x2: tip[0], y2: tip[1], t: now });
+  }
+
+  while (trail.length && now - trail[0].t > TRAIL_MAX_AGE) trail.shift();
+
+  for (const s of trail) {
+    const a = Math.max(0, 1 - (now - s.t) / TRAIL_MAX_AGE);
+    drawSaberSegment(s.x1, s.y1, s.x2, s.y2, 14, color, 24, a * 0.5);
+  }
+
+  if (wristPt && trail.length) {
+    const last = trail[trail.length - 1];
+    drawSaberSegment(last.x1, last.y1, last.x2, last.y2, 14, color, 28, 1);
+    drawSaberSegment(last.x1, last.y1, last.x2, last.y2, 5, '#ffffff', 10, 1);
+    drawGlowDot(last.x1, last.y1, 16, color);
+  }
+}
+
+function drawSaber(pts, now) {
+  const shoulderDist = (pts[L_SHOULDER] && pts[R_SHOULDER])
+    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
+    : 140;
+  const color = `hsl(${saberHue}, 95%, 65%)`;
+  updateAndDrawBlade(sabreTrailL, pts[L_WRIST], pts[L_ELBOW], shoulderDist, now, color);
+  updateAndDrawBlade(sabreTrailR, pts[R_WRIST], pts[R_ELBOW], shoulderDist, now, color);
+}
+
+/* ---------- color paint ---------- */
+let paintColor = '#ef4444';
+let paintBrushSize = 26;
+document.addEventListener('keydown', (e) => {
+  if (mode !== 'paint' || !game.classList.contains('show')) return;
+  if (e.key === '[') paintBrushSize = Math.max(8, paintBrushSize - 4);
+  else if (e.key === ']') paintBrushSize = Math.min(70, paintBrushSize + 4);
+});
+let paintCanvas = null;
+let paintCtx = null;
+let brushPos = [null, null];
+
+function assignPaintBrushes(points) {
+  const assigned = [null, null];
+  if (points.length === 2) {
+    const [p0, p1] = points;
+    if (brushPos[0] && brushPos[1]) {
+      const costA = Math.hypot(p0[0] - brushPos[0][0], p0[1] - brushPos[0][1])
+                  + Math.hypot(p1[0] - brushPos[1][0], p1[1] - brushPos[1][1]);
+      const costB = Math.hypot(p0[0] - brushPos[1][0], p0[1] - brushPos[1][1])
+                  + Math.hypot(p1[0] - brushPos[0][0], p1[1] - brushPos[0][1]);
+      if (costA <= costB) { assigned[0] = p0; assigned[1] = p1; }
+      else { assigned[0] = p1; assigned[1] = p0; }
+    } else if (p0[0] <= p1[0]) { assigned[0] = p0; assigned[1] = p1; }
+    else { assigned[0] = p1; assigned[1] = p0; }
+  } else if (points.length === 1) {
+    const p = points[0];
+    if (brushPos[0] && brushPos[1]) {
+      const d0 = Math.hypot(p[0] - brushPos[0][0], p[1] - brushPos[0][1]);
+      const d1 = Math.hypot(p[0] - brushPos[1][0], p[1] - brushPos[1][1]);
+      assigned[d0 <= d1 ? 0 : 1] = p;
+    } else if (brushPos[0]) {
+      assigned[0] = p;
+    } else if (brushPos[1]) {
+      assigned[1] = p;
+    } else {
+      assigned[0] = p;
+    }
+  }
+  return assigned;
+}
+
+function ensurePaintCanvas() {
+  if (paintCanvas) return;
+  paintCanvas = document.createElement('canvas');
+  paintCanvas.width = Math.max(1, cssW);
+  paintCanvas.height = Math.max(1, cssH);
+  paintCtx = paintCanvas.getContext('2d');
+}
+
+function resizePaintCanvasIfNeeded() {
+  if (!paintCanvas) return;
+  const w = Math.max(1, cssW), h = Math.max(1, cssH);
+  if (paintCanvas.width === w && paintCanvas.height === h) return;
+  const old = paintCanvas;
+  const next = document.createElement('canvas');
+  next.width = w;
+  next.height = h;
+  const nctx = next.getContext('2d');
+  nctx.drawImage(old, 0, 0, old.width, old.height, 0, 0, w, h);
+  paintCanvas = next;
+  paintCtx = nctx;
+}
+
+function clearPaint() {
+  if (paintCtx) paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+}
+
+function paintStroke(prev, curr, radius) {
+  const erasing = paintColor === 'eraser';
+  paintCtx.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
+  const drawColor = erasing ? '#000000' : paintColor;
+  const r = erasing ? radius * 1.5 : radius;
+  paintCtx.lineCap = 'round';
+  paintCtx.lineJoin = 'round';
+  paintCtx.strokeStyle = drawColor;
+  paintCtx.fillStyle = drawColor;
+  if (prev) {
+    paintCtx.lineWidth = r * 2;
+    paintCtx.beginPath();
+    paintCtx.moveTo(prev[0], prev[1]);
+    paintCtx.lineTo(curr[0], curr[1]);
+    paintCtx.stroke();
+  } else {
+    paintCtx.beginPath();
+    paintCtx.arc(curr[0], curr[1], r, 0, Math.PI * 2);
+    paintCtx.fill();
+  }
+  paintCtx.globalCompositeOperation = 'source-over';
+}
+
+function drawCursorRing(x, y, r, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.beginPath();
+  ctx.arc(x, y, r + 1.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x, y, r - 1, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPaint(pts, tips) {
+  ensurePaintCanvas();
+  resizePaintCanvasIfNeeded();
+
+  const shoulderDist = (pts[L_SHOULDER] && pts[R_SHOULDER])
+    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
+    : 140;
+  const radius = paintBrushSize;
+  const maxJump = shoulderDist * 1.3;
+
+  const rawPoints = [];
+  if (tips[L_WRIST]) rawPoints.push(tips[L_WRIST]);
+  if (tips[R_WRIST]) rawPoints.push(tips[R_WRIST]);
+  const assigned = assignPaintBrushes(rawPoints);
+
+  const cursors = [null, null];
+  for (let i = 0; i < 2; i++) {
+    const curr = assigned[i];
+    if (!curr) { brushPos[i] = null; continue; }
+    if (!brushPos[i]) {
+      brushPos[i] = [curr[0], curr[1]];
+      paintStroke(null, brushPos[i], radius);
+    } else {
+      const dist = Math.hypot(curr[0] - brushPos[i][0], curr[1] - brushPos[i][1]);
+      if (dist > maxJump) {
+        brushPos[i] = [curr[0], curr[1]];
+        paintStroke(null, brushPos[i], radius);
+      } else {
+        const prev = [brushPos[i][0], brushPos[i][1]];
+        const f = dist < shoulderDist * 0.02 ? 0.12 : 0.35;
+        brushPos[i][0] += (curr[0] - brushPos[i][0]) * f;
+        brushPos[i][1] += (curr[1] - brushPos[i][1]) * f;
+        paintStroke(prev, brushPos[i], radius);
+      }
+    }
+    cursors[i] = brushPos[i];
+  }
+
+  ctx.drawImage(paintCanvas, 0, 0, cssW, cssH);
+
+  for (const p of cursors) {
+    if (p) drawCursorRing(p[0], p[1], radius);
+  }
+}
+
+/* ---------- fish tank ---------- */
+const WATER_BAND = 0.8;
+let fish = [];
+let waterBubbles = [];
+let mouthOpen = false;
+let mouthPos = null;
+let biteTriggered = false;
+
+function updateMouthOpen(faceLm) {
+  biteTriggered = false;
+  if (!faceLm) return;
+  const upper = faceLm[13], lower = faceLm[14], left = faceLm[78], right = faceLm[308];
+  if (!upper || !lower || !left || !right) return;
+  const vert = Math.hypot(upper.x - lower.x, upper.y - lower.y);
+  const horiz = Math.hypot(left.x - right.x, left.y - right.y) || 0.0001;
+  const mar = vert / horiz;
+  const wasOpen = mouthOpen;
+  if (mar > 0.45) mouthOpen = true;
+  else if (mar < 0.28) mouthOpen = false;
+  if (wasOpen && !mouthOpen) biteTriggered = true;
+}
+
+let fishWinShown = false;
+function randomFish(waterY) {
+  const size = 20 + Math.random() * 16;
+  return {
+    x: 40 + Math.random() * (cssW - 80),
+    y: waterY + size * 2 + Math.random() * (cssH - waterY - size * 4),
+    vx: (Math.random() < 0.5 ? -1 : 1) * (25 + Math.random() * 35),
+    vy: (Math.random() - 0.5) * 8,
+    size, hue: Math.random() * 360,
+    wiggle: Math.random() * Math.PI * 2,
+    fleeUntil: 0, eaten: false,
+  };
+}
+
+function initFish() {
+  fish = [];
+  fishWinShown = false;
+  const waterY = cssH * (1 - WATER_BAND);
+  const count = cssW < 700 ? 6 : 9;
+  for (let i = 0; i < count; i++) fish.push(randomFish(waterY));
+}
+
+function spawnWaterBubble(x, y) {
+  waterBubbles.push({
+    x, y,
+    vx: (Math.random() - 0.5) * 14,
+    vy: -(30 + Math.random() * 45),
+    r: 3 + Math.random() * 6,
+    wobble: Math.random() * Math.PI * 2,
+    life: 0, maxLife: 2 + Math.random() * 1.5,
+  });
+}
+function updateWaterBubbles(dt) {
+  for (const b of waterBubbles) {
+    b.life += dt;
+    b.wobble += dt * 3;
+    b.x += (b.vx + Math.sin(b.wobble) * 10) * dt;
+    b.y += b.vy * dt;
+    b.vy *= 0.995;
+  }
+  waterBubbles = waterBubbles.filter(b => b.life < b.maxLife);
+  if (waterBubbles.length > 260) waterBubbles.splice(0, waterBubbles.length - 260);
+}
+function drawWaterBubbles() {
+  for (const b of waterBubbles) {
+    const t = Math.max(0, 1 - b.life / b.maxLife);
+    ctx.save();
+    ctx.globalAlpha = t * 0.75;
+    ctx.strokeStyle = 'rgba(220,245,255,0.9)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawOceanBackground(waterY) {
+  const grad = ctx.createLinearGradient(0, waterY, 0, cssH);
+  grad.addColorStop(0, 'rgba(56,189,248,0.55)');
+  grad.addColorStop(1, 'rgba(8,47,92,0.8)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, waterY, cssW, cssH - waterY);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(224,247,255,0.7)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, waterY);
+  ctx.lineTo(cssW, waterY);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFishShape(f) {
+  const facing = f.vx >= 0 ? 1 : -1;
+  ctx.save();
+  ctx.translate(f.x, f.y + Math.sin(f.wiggle) * 3);
+  ctx.scale(facing, 1);
+  ctx.shadowColor = `hsl(${f.hue}, 90%, 65%)`;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = `hsl(${f.hue}, 85%, 60%)`;
+  const tailWiggle = Math.sin(f.wiggle * 1.6) * 0.35 * f.size;
+  ctx.beginPath();
+  ctx.moveTo(-f.size * 0.9, 0);
+  ctx.lineTo(-f.size * 1.6, -f.size * 0.55 + tailWiggle);
+  ctx.lineTo(-f.size * 1.6, f.size * 0.55 + tailWiggle);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, f.size, f.size * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#132033';
+  ctx.beginPath();
+  ctx.arc(f.size * 0.45, -f.size * 0.12, f.size * 0.11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function updateFish(dt, now, waterY, handPoints) {
+  let bitten = false;
+  for (const f of fish) {
+    f.wiggle += dt * 5;
+    const fleeing = f.fleeUntil && now < f.fleeUntil;
+    if (f.fleeUntil && !fleeing) {
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      f.vx = dir * (25 + Math.random() * 35);
+      f.vy = (Math.random() - 0.5) * 8;
+      f.fleeUntil = 0;
+    }
+
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+
+    const margin = f.size * 1.7;
+    if (f.x < margin) { f.x = margin; f.vx = Math.abs(f.vx); }
+    if (f.x > cssW - margin) { f.x = cssW - margin; f.vx = -Math.abs(f.vx); }
+    const topBound = waterY + margin, bottomBound = cssH - margin;
+    if (f.y < topBound) { f.y = topBound; f.vy = Math.abs(f.vy); }
+    if (f.y > bottomBound) { f.y = bottomBound; f.vy = -Math.abs(f.vy); }
+
+    if (!bitten && biteTriggered && mouthPos) {
+      const bdx = mouthPos[0] - f.x, bdy = mouthPos[1] - f.y;
+      const biteR = f.size * 1.6 + 90;
+      if (bdx * bdx + bdy * bdy < biteR * biteR) {
+        bitten = true;
+        f.eaten = true;
+        spawnBurst(f.x, f.y, f.hue, 22);
+        playPop();
+        continue;
+      }
+    }
+
+    if (!fleeing) {
+      const hitR = f.size * 1.6 + 40;
+      for (const [hx, hy] of handPoints) {
+        const dx = hx - f.x, dy = hy - f.y;
+        if (dx * dx + dy * dy < hitR * hitR) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 200 + Math.random() * 160;
+          f.vx = Math.cos(ang) * spd;
+          f.vy = Math.sin(ang) * spd;
+          f.fleeUntil = now + 700 + Math.random() * 400;
+          spawnBurst(f.x, f.y, f.hue, 10);
+          playPop();
+          break;
+        }
+      }
+    }
+  }
+
+  fish = fish.filter(f => !f.eaten);
+  if (fish.length === 0 && !fishWinShown) {
+    fishWinShown = true;
+    showWin('You are the winner!', '🐠 You ate all the fish! 🐠', initFish);
+  }
+}
+
+function drawOcean(pts, tips, dt, now) {
+  const waterY = cssH * (1 - WATER_BAND);
+  drawOceanBackground(waterY);
+
+  const handPoints = COLLIDERS.filter(i => tips[i]).map(i => tips[i]);
+  updateFish(dt, now, waterY, handPoints);
+  for (const f of fish) drawFishShape(f);
+
+  if (pts[NOSE] && Math.random() < 0.12) spawnWaterBubble(pts[NOSE][0], pts[NOSE][1]);
+  [L_WRIST, R_WRIST].forEach(i => {
+    if (!tips[i]) return;
+    if (Math.random() < 0.12) spawnWaterBubble(tips[i][0], tips[i][1]);
+  });
+  updateWaterBubbles(dt);
+  drawWaterBubbles();
+
+  if (mouthPos) drawCursorRing(mouthPos[0], mouthPos[1], mouthOpen ? 70 : 20, 0.16);
+}
+
+/* ---------- truck race ---------- */
+const TRUCK_HUES = [0, 210];
+const TRUCK_COLORS = ['#ef4444', '#3b82f6'];
+let truckPos = [null, null];
+let truckTarget = [null, null];
+let truckVel = [[0, 0], [0, 0]];
+let truckAngle = [0, 0];
+let truckScore = [0, 0];
+let coins = [];
+let crashReady = true;
+let trucksWinShown = false;
+
+function randomCoin() {
+  return {
+    x: 60 + Math.random() * (cssW - 120),
+    y: 100 + Math.random() * (cssH - 220),
+    phase: Math.random() * Math.PI * 2,
+  };
+}
+
+function initTrucks() {
+  truckPos = [null, null];
+  truckTarget = [null, null];
+  truckVel = [[0, 0], [0, 0]];
+  truckAngle = [0, 0];
+  truckScore = [0, 0];
+  crashReady = true;
+  trucksWinShown = false;
+  coins = [];
+  const count = cssW < 700 ? 10 : 14;
+  for (let i = 0; i < count; i++) coins.push(randomCoin());
+}
+
+function roundRectPath(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawCoin(c) {
+  const y = c.y + Math.sin(c.phase) * 4;
+  ctx.save();
+  ctx.translate(c.x, y);
+  ctx.shadowColor = 'hsl(46, 95%, 65%)';
+  ctx.shadowBlur = 14;
+  const grad = ctx.createRadialGradient(-5, -5, 2, 0, 0, 16);
+  grad.addColorStop(0, '#fff6d0');
+  grad.addColorStop(0.6, '#fbbf24');
+  grad.addColorStop(1, '#b45309');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(0, 0, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function lerpAngle(a, b, t) {
+  let diff = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+  return a + diff * t;
+}
+
+function updateTruck(idx, tipPt, dt, scale) {
+  if (!tipPt) return;
+
+  if (!truckTarget[idx]) {
+    truckTarget[idx] = [tipPt[0], tipPt[1]];
+  } else {
+    const tf = Math.min(1, dt * 9);
+    truckTarget[idx][0] += (tipPt[0] - truckTarget[idx][0]) * tf;
+    truckTarget[idx][1] += (tipPt[1] - truckTarget[idx][1]) * tf;
+  }
+
+  if (!truckPos[idx]) {
+    truckPos[idx] = [truckTarget[idx][0], truckTarget[idx][1]];
+    return;
+  }
+
+  const stiffness = 34, damping = 13;
+  const dx = truckTarget[idx][0] - truckPos[idx][0], dy = truckTarget[idx][1] - truckPos[idx][1];
+  const vx = truckVel[idx][0], vy = truckVel[idx][1];
+  const ax = dx * stiffness - vx * damping;
+  const ay = dy * stiffness - vy * damping;
+  truckVel[idx][0] += ax * dt;
+  truckVel[idx][1] += ay * dt;
+  const spd = Math.hypot(truckVel[idx][0], truckVel[idx][1]);
+  const maxSpd = 620 * scale;
+  if (spd > maxSpd) {
+    truckVel[idx][0] = truckVel[idx][0] / spd * maxSpd;
+    truckVel[idx][1] = truckVel[idx][1] / spd * maxSpd;
+  }
+  truckPos[idx][0] += truckVel[idx][0] * dt;
+  truckPos[idx][1] += truckVel[idx][1] * dt;
+  if (spd > 18) {
+    const targetAngle = Math.atan2(truckVel[idx][1], truckVel[idx][0]);
+    truckAngle[idx] = lerpAngle(truckAngle[idx], targetAngle, Math.min(1, dt * 6));
+  }
+}
+
+function drawTruckShape(x, y, angle, hue, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.scale(scale, scale);
+  const w = 46, h = 30;
+  const wheelW = 16, wheelH = 10, wheelR = 4;
+  ctx.fillStyle = '#161616';
+  [[-w * 0.36, -h * 0.62], [w * 0.36, -h * 0.62], [-w * 0.36, h * 0.62], [w * 0.36, h * 0.62]].forEach(([wx, wy]) => {
+    roundRectPath(wx - wheelW / 2, wy - wheelH / 2, wheelW, wheelH, wheelR);
+    ctx.fill();
+  });
+  ctx.shadowColor = `hsl(${hue}, 90%, 60%)`;
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = `hsl(${hue}, 85%, 55%)`;
+  roundRectPath(-w / 2, -h / 2, w, h, 10);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  roundRectPath(w * 0.05, -h * 0.28, w * 0.32, h * 0.56, 4);
+  ctx.fill();
+  ctx.restore();
+}
+
+function updateCoinPickup(now, scale) {
+  const hitR = 40 * scale;
+  for (let ti = 0; ti < 2; ti++) {
+    const tp = truckPos[ti];
+    if (!tp) continue;
+    coins = coins.filter(c => {
+      const dx = tp[0] - c.x, dy = tp[1] - (c.y + Math.sin(c.phase) * 4);
+      if (dx * dx + dy * dy < hitR * hitR) {
+        truckScore[ti]++;
+        spawnBurst(c.x, c.y, TRUCK_HUES[ti], 12);
+        playPop();
+        return false;
+      }
+      return true;
+    });
+  }
+  if (coins.length === 0 && !trucksWinShown) {
+    trucksWinShown = true;
+    if (truckScore[0] > truckScore[1]) {
+      showWin('Red is the winner!', `🔴 ${truckScore[0]} to ${truckScore[1]} 🔵`, initTrucks, TRUCK_COLORS[0]);
+    } else if (truckScore[1] > truckScore[0]) {
+      showWin('Blue is the winner!', `🔵 ${truckScore[1]} to ${truckScore[0]} 🔴`, initTrucks, TRUCK_COLORS[1]);
+    } else {
+      showWin("It's a tie!", `🔴 ${truckScore[0]} — ${truckScore[1]} 🔵`, initTrucks, '#a78bfa');
+    }
+  }
+}
+
+function spawnCrashEffect(x, y, scale) {
+  for (let i = 0; i < 26; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = (120 + Math.random() * 260) * scale;
+    const isSpark = Math.random() < 0.4;
+    particles.push({
+      x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 40,
+      life: 0, maxLife: 0.35 + Math.random() * 0.3,
+      size: (isSpark ? 3 : 5) + Math.random() * 4,
+      hue: isSpark ? 42 : 0,
+      sat: isSpark ? 90 : 6,
+      light: isSpark ? 62 : 30 + Math.random() * 20,
+    });
+  }
+  shockwaves.push({ x, y, r: 4, maxR: 90 * scale, t: 0, maxAge: 0.22, hue: 48 });
+  shockwaves.push({ x, y, r: 4, maxR: 60 * scale, t: 0, maxAge: 0.15, hue: 0 });
+}
+
+function playCrash() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc1 = audioCtx.createOscillator();
+  const gain1 = audioCtx.createGain();
+  osc1.type = 'square';
+  osc1.frequency.setValueAtTime(140, t);
+  osc1.frequency.exponentialRampToValueAtTime(50, t + 0.18);
+  gain1.gain.setValueAtTime(0.3, t);
+  gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  osc1.connect(gain1).connect(audioCtx.destination);
+  osc1.start(t);
+  osc1.stop(t + 0.22);
+  [1600, 2200].forEach((freq, i) => {
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(freq, t);
+    gain2.gain.setValueAtTime(0.06, t);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.08 + i * 0.02);
+    osc2.connect(gain2).connect(audioCtx.destination);
+    osc2.start(t);
+    osc2.stop(t + 0.1 + i * 0.02);
+  });
+}
+
+function updateCrash(now, scale) {
+  if (!truckPos[0] || !truckPos[1]) return;
+  const dx = truckPos[0][0] - truckPos[1][0], dy = truckPos[0][1] - truckPos[1][1];
+  const dist = Math.hypot(dx, dy);
+  if (dist < 46 * scale && crashReady) {
+    crashReady = false;
+    const mx = (truckPos[0][0] + truckPos[1][0]) / 2, my = (truckPos[0][1] + truckPos[1][1]) / 2;
+    spawnCrashEffect(mx, my, scale);
+    playCrash();
+    const nx = dx / (dist || 1), ny = dy / (dist || 1);
+    truckPos[0][0] += nx * 18; truckPos[0][1] += ny * 18;
+    truckPos[1][0] -= nx * 18; truckPos[1][1] -= ny * 18;
+  } else if (dist > 90 * scale) {
+    crashReady = true;
+  }
+}
+
+function drawTrucks(pts, tips, dt, now) {
+  const shoulderDist = (pts[L_SHOULDER] && pts[R_SHOULDER])
+    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
+    : 140;
+  const scale = shoulderDist / 140;
+
+  updateTruck(0, tips[R_WRIST], dt, scale);
+  updateTruck(1, tips[L_WRIST], dt, scale);
+  updateCoinPickup(now, scale);
+  updateCrash(now, scale);
+
+  for (const c of coins) c.phase += dt * 2;
+  for (const c of coins) drawCoin(c);
+  if (truckPos[0]) drawTruckShape(truckPos[0][0], truckPos[0][1], truckAngle[0], TRUCK_HUES[0], scale);
+  if (truckPos[1]) drawTruckShape(truckPos[1][0], truckPos[1][1], truckAngle[1], TRUCK_HUES[1], scale);
+
+  truckScoreRed.textContent = `🔴 ${truckScore[0]}`;
+  truckScoreBlue.textContent = `🔵 ${truckScore[1]}`;
+}
+
+/* ---------- truck race (scrolling dodge, timed) ---------- */
+const RACE_COUNTDOWN = 3;
+const RACE_DURATION = 30;
+const RACE_SPEED = 260;
+let smokePuffs = [];
+let raceState = 'countdown';
+let raceTimer = RACE_COUNTDOWN;
+let raceScroll = 0;
+let raceObstacles = [];
+let raceObstacleTimer = 0;
+let raceHandY = [null, null];
+
+function initRace() {
+  raceState = 'countdown';
+  raceTimer = RACE_COUNTDOWN;
+  raceScroll = 0;
+  raceObstacles = [];
+  raceObstacleTimer = 1;
+  raceHandY = [null, null];
+  smokePuffs = [];
+  crashReady = true;
+  truckVel = [[0, 0], [0, 0]];
+  truckTarget = [null, null];
+  truckAngle = [-Math.PI / 2, -Math.PI / 2];
+  truckPos = [
+    [cssW * 0.75, cssH * 0.85],
+    [cssW * 0.25, cssH * 0.85],
+  ];
+}
+
+function spawnSmoke(x, y, vx, vy) {
+  smokePuffs.push({
+    x, y,
+    vx: vx + (Math.random() - 0.5) * 10,
+    vy: vy + (Math.random() - 0.5) * 10 - 6,
+    r: 5 + Math.random() * 3,
+    life: 0, maxLife: 0.6 + Math.random() * 0.4,
+  });
+}
+function updateSmoke(dt) {
+  for (const s of smokePuffs) {
+    s.life += dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.vx *= 0.96;
+    s.vy *= 0.96;
+    s.r += dt * 22;
+  }
+  smokePuffs = smokePuffs.filter(s => s.life < s.maxLife);
+  if (smokePuffs.length > 300) smokePuffs.splice(0, smokePuffs.length - 300);
+}
+function drawSmoke() {
+  for (const s of smokePuffs) {
+    const t = 1 - s.life / s.maxLife;
+    ctx.save();
+    ctx.globalAlpha = t * 0.35;
+    ctx.fillStyle = '#c9c9c9';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawRaceLanes(moving, dt) {
+  if (moving) raceScroll = (raceScroll + dt * RACE_SPEED) % 40;
+  ctx.fillStyle = 'rgba(35,35,42,0.65)';
+  ctx.fillRect(0, 0, cssW, cssH);
+  ctx.save();
+  ctx.setLineDash([22, 18]);
+  ctx.lineDashOffset = -raceScroll;
+  ctx.strokeStyle = 'rgba(250,220,80,0.85)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(cssW / 2, 0);
+  ctx.lineTo(cssW / 2, cssH);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 3;
+  [cssW * 0.25, cssW * 0.75].forEach(lx => {
+    ctx.beginPath();
+    ctx.moveTo(lx, 0);
+    ctx.lineTo(lx, cssH);
+    ctx.stroke();
+  });
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(10, 0); ctx.lineTo(10, cssH);
+  ctx.moveTo(cssW - 10, 0); ctx.lineTo(cssW - 10, cssH);
+  ctx.stroke();
+
+  const check = 14;
+  for (let i = 0; i < Math.ceil(cssW / check); i++) {
+    ctx.fillStyle = (i % 2 === 0) ? '#fff' : '#111';
+    ctx.fillRect(i * check, 34, check, 16);
+  }
+}
+
+function drawCenteredText(text, size, y) {
+  ctx.save();
+  ctx.translate(cssW / 2, y);
+  ctx.scale(-1, 1);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `900 ${size}px -apple-system, sans-serif`;
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+function spawnObstacle() {
+  raceObstacles.push({
+    x: 50 + Math.random() * (cssW - 100),
+    y: -30,
+    size: 16 + Math.random() * 8,
+  });
+}
+
+function drawObstacle(o) {
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  ctx.shadowColor = 'hsl(28, 90%, 55%)';
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = 'hsl(28, 90%, 52%)';
+  ctx.beginPath();
+  ctx.moveTo(0, -o.size);
+  ctx.lineTo(o.size * 0.8, o.size * 0.7);
+  ctx.lineTo(-o.size * 0.8, o.size * 0.7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillRect(-o.size * 0.5, o.size * 0.1, o.size, o.size * 0.18);
+  ctx.restore();
+}
+
+function updateRaceTruck(idx, tipPt, dt, scale) {
+  if (tipPt) raceHandY[idx] = tipPt[1];
+  if (!tipPt) return;
+  if (!truckPos[idx]) {
+    truckPos[idx] = [tipPt[0], tipPt[1]];
+  } else {
+    const dist = Math.hypot(tipPt[0] - truckPos[idx][0], tipPt[1] - truckPos[idx][1]);
+    const f = dist < 5 * scale ? 0.25 : 0.55;
+    truckPos[idx][0] += (tipPt[0] - truckPos[idx][0]) * f;
+    truckPos[idx][1] += (tipPt[1] - truckPos[idx][1]) * f;
+  }
+  truckAngle[idx] = -Math.PI / 2;
+}
+
+function finishRace() {
+  raceState = 'finished';
+  const ry = raceHandY[0], by = raceHandY[1];
+  if (ry != null && by != null && Math.abs(ry - by) > 8) {
+    if (ry < by) showWin('Red is the winner!', '🔴 held their hand higher!', initRace, TRUCK_COLORS[0]);
+    else showWin('Blue is the winner!', '🔵 held their hand higher!', initRace, TRUCK_COLORS[1]);
+  } else if (ry != null && by == null) {
+    showWin('Red is the winner!', '🔴 held their hand higher!', initRace, TRUCK_COLORS[0]);
+  } else if (by != null && ry == null) {
+    showWin('Blue is the winner!', '🔵 held their hand higher!', initRace, TRUCK_COLORS[1]);
+  } else {
+    showWin("It's a tie!", 'Both hands were the same height!', initRace, '#a78bfa');
+  }
+}
+
+function drawRace(pts, tips, dt, now) {
+  const shoulderDist = (pts[L_SHOULDER] && pts[R_SHOULDER])
+    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
+    : 140;
+  const scale = shoulderDist / 140;
+
+  drawRaceLanes(raceState === 'racing', dt);
+
+  updateRaceTruck(0, tips[R_WRIST], dt, scale);
+  updateRaceTruck(1, tips[L_WRIST], dt, scale);
+
+  if (raceState === 'countdown') {
+    raceTimer -= dt;
+    if (raceTimer <= 0) {
+      raceState = 'racing';
+      raceTimer = RACE_DURATION;
+    } else {
+      drawCenteredText(String(Math.ceil(raceTimer)), 130, cssH / 2);
+    }
+  } else if (raceState === 'racing') {
+    raceTimer -= dt;
+    raceObstacleTimer -= dt;
+    if (raceObstacleTimer <= 0) {
+      raceObstacleTimer = 0.5 + Math.random() * 0.4;
+      spawnObstacle();
+    }
+    for (const o of raceObstacles) o.y += RACE_SPEED * dt * scale;
+    for (const o of raceObstacles) {
+      if (o.hit) continue;
+      for (let ti = 0; ti < 2; ti++) {
+        const tp = truckPos[ti];
+        if (!tp) continue;
+        const dx = tp[0] - o.x, dy = tp[1] - o.y;
+        if (dx * dx + dy * dy < (34 * scale) * (34 * scale)) {
+          o.hit = true;
+          spawnBurst(o.x, o.y, TRUCK_HUES[ti], 8);
+          playPop();
+          break;
+        }
+      }
+    }
+    raceObstacles = raceObstacles.filter(o => !o.hit && o.y < cssH + 40);
+    for (const o of raceObstacles) drawObstacle(o);
+    drawCenteredText(String(Math.ceil(raceTimer)), 40, 50);
+    if (raceTimer <= 0) finishRace();
+  }
+
+  for (let ti = 0; ti < 2; ti++) {
+    if (truckPos[ti] && Math.random() < 0.5) {
+      const rearX = truckPos[ti][0] - Math.cos(truckAngle[ti]) * 26 * scale;
+      const rearY = truckPos[ti][1] - Math.sin(truckAngle[ti]) * 26 * scale;
+      spawnSmoke(rearX, rearY, -Math.cos(truckAngle[ti]) * 20, -Math.sin(truckAngle[ti]) * 20);
+    }
+  }
+  updateSmoke(dt);
+  drawSmoke();
+
+  if (truckPos[0]) drawTruckShape(truckPos[0][0], truckPos[0][1], truckAngle[0], TRUCK_HUES[0], scale);
+  if (truckPos[1]) drawTruckShape(truckPos[1][0], truckPos[1][1], truckAngle[1], TRUCK_HUES[1], scale);
+}
+
+/* ---------- drawing helpers ---------- */
+function drawGlowDot(x, y, r, color) {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = r * 1.6;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGlowPin(cx, cy, w, h, color, angle = 0) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.shadowColor = color;
+  ctx.shadowBlur = w * 1.3;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, -h / 2);
+  ctx.lineTo(w / 2, 0);
+  ctx.lineTo(0, h / 2);
+  ctx.lineTo(-w / 2, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSkeleton(pts) {
+  const shoulderDist = (pts[L_SHOULDER] && pts[R_SHOULDER])
+    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
+    : 140;
+  const boneWidth = Math.max(6, shoulderDist * 0.09);
+  const hues = [190, 260, 320, 40];
+  ctx.lineCap = 'round';
+  BONES.forEach(([a, b], i) => {
+    if (!pts[a] || !pts[b]) return;
+    const hue = hues[i % hues.length];
+    ctx.save();
+    ctx.shadowColor = `hsl(${hue}, 95%, 65%)`;
+    ctx.shadowBlur = boneWidth * 1.4;
+    ctx.strokeStyle = `hsl(${hue}, 95%, 70%)`;
+    ctx.lineWidth = boneWidth;
+    ctx.beginPath();
+    ctx.moveTo(pts[a][0], pts[a][1]);
+    ctx.lineTo(pts[b][0], pts[b][1]);
+    ctx.stroke();
+    ctx.restore();
+  });
+  TRACKED.forEach(i => {
+    if (!pts[i] || i === NOSE) return;
+    drawGlowDot(pts[i][0], pts[i][1], boneWidth * 0.85, '#fff7');
+  });
+  if (pts[NOSE]) {
+    const [hx, hy] = pts[NOSE];
+    const headR = shoulderDist * 0.42;
+    const tilt = (pts[L_EAR] && pts[R_EAR])
+      ? Math.atan2(pts[R_EAR][1] - pts[L_EAR][1], pts[R_EAR][0] - pts[L_EAR][0])
+      : 0;
+
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(tilt);
+
+    ctx.save();
+    ctx.shadowColor = 'hsl(300, 95%, 68%)';
+    ctx.strokeStyle = 'hsl(300, 95%, 78%)';
+    ctx.lineWidth = headR * 0.075;
+    ctx.shadowBlur = headR * 0.34;
+    ctx.beginPath();
+    ctx.arc(0, 0, headR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = headR * 0.21;
+    ctx.beginPath();
+    ctx.arc(0, 0, headR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    const eyeR = headR * 0.42;
+    const eyeOffX = headR * 0.4;
+    const eyeOffY = -headR * 0.095;
+    [-1, 1].forEach(side => {
+      const ex = side * eyeOffX, ey = eyeOffY;
+      const grad = ctx.createRadialGradient(ex - eyeR * 0.3, ey - eyeR * 0.35, eyeR * 0.1, ex, ey, eyeR);
+      grad.addColorStop(0, 'rgba(255,255,255,0.5)');
+      grad.addColorStop(1, 'rgba(240,171,252,0.32)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(ex, ey, eyeR, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+}
+
+/* ---------- main loop ---------- */
+let lastT = performance.now();
+function frame(now) {
+  rafId = requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+
+  if (video && video.videoWidth && poseLandmarker) {
+    const result = poseLandmarker.detectForVideo(video, now);
+    updateSmoothed(result.landmarks && result.landmarks[0]);
+  }
+
+  let faceLm = null;
+  if (mode === 'ocean' && video && video.videoWidth && faceLandmarker) {
+    const faceResult = faceLandmarker.detectForVideo(video, now);
+    faceLm = faceResult.faceLandmarks && faceResult.faceLandmarks[0];
+  }
+  updateMouthOpen(faceLm);
+
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  // mirror everything so it feels like a mirror
+  ctx.translate(cssW, 0);
+  ctx.scale(-1, 1);
+
+  if (video && video.videoWidth) {
+    const crop = coverCrop(video.videoWidth, video.videoHeight, cssW, cssH);
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, cssW, cssH);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(10, 6, 24, 0.42)';
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    mouthPos = null;
+    if (faceLm && faceLm[13] && faceLm[14]) {
+      mouthPos = toCanvasXY((faceLm[13].x + faceLm[14].x) / 2, (faceLm[13].y + faceLm[14].y) / 2, crop, video.videoWidth, video.videoHeight);
+    }
+
+    const pts = {};
+    for (const i of TRACKED) {
+      if (smoothed[i] && smoothed[i].visible) pts[i] = toCanvasXY(smoothed[i].x, smoothed[i].y, crop, video.videoWidth, video.videoHeight);
+    }
+    pruneImplausible(pts);
+    const tips = computeTipPoints(pts);
+
+    const poseFresh = haveAnySmoothed && (now - lastPoseTime < 1500);
+    hint.style.opacity = poseFresh ? '0' : '1';
+    if (!hint.dataset.set) {
+      hint.textContent = HINTS[mode];
+      hint.dataset.set = '1';
+    }
+
+    if (poseFresh) {
+      if (mode === 'skeleton') {
+        drawSkeleton(pts);
+      } else if (mode === 'bubbles') {
+        const handPoints = COLLIDERS.filter(i => tips[i]).map(i => tips[i]);
+        updateBubbles(dt, now, handPoints);
+        drawBubbles();
+        COLLIDERS.forEach(i => {
+          if (!tips[i]) return;
+          const ref = pts[PIN_REF[i]];
+          const angle = ref ? Math.atan2(tips[i][1] - ref[1], tips[i][0] - ref[0]) + Math.PI / 2 : 0;
+          drawGlowPin(tips[i][0], tips[i][1], 11, 115, 'rgba(255,255,255,0.6)', angle);
+        });
+      } else if (mode === 'sparkle') {
+        EMITTERS.forEach(i => {
+          if (!tips[i]) return;
+          for (let k = 0; k < 4; k++) spawnSparkle(tips[i][0], tips[i][1]);
+          drawGlowDot(tips[i][0], tips[i][1], 10, '#fff9');
+        });
+        checkClap(pts, tips, now);
+      } else if (mode === 'saber') {
+        drawSaber(pts, now);
+      } else if (mode === 'paint') {
+        drawPaint(pts, tips);
+      } else if (mode === 'ocean') {
+        drawOcean(pts, tips, dt, now);
+      } else if (mode === 'trucks') {
+        drawTrucks(pts, tips, dt, now);
+      } else if (mode === 'race') {
+        drawRace(pts, tips, dt, now);
+      }
+    } else if (mode === 'bubbles') {
+      drawBubbles();
+    } else if (mode === 'paint' && paintCanvas) {
+      ctx.drawImage(paintCanvas, 0, 0, cssW, cssH);
+    } else if (mode === 'ocean') {
+      drawOcean({}, {}, dt, now);
+    } else if (mode === 'trucks') {
+      drawTrucks({}, {}, dt, now);
+    } else if (mode === 'race') {
+      drawRace({}, {}, dt, now);
+    }
+  }
+
+  if (mode === 'bubbles' || mode === 'sparkle' || mode === 'ocean' || mode === 'trucks' || mode === 'race') {
+    updateParticles(dt);
+    drawParticles();
+  }
+  if (mode === 'sparkle' || mode === 'bubbles' || mode === 'ocean' || mode === 'trucks' || mode === 'race') {
+    updateShockwaves(dt);
+    drawShockwaves();
+  }
+
+  ctx.restore();
+}
+
+/* ---------- lifecycle ---------- */
+let visionFilesetPromise = null;
+function getVisionFileset() {
+  if (!visionFilesetPromise) {
+    visionFilesetPromise = FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+    );
+  }
+  return visionFilesetPromise;
+}
+
+let poseLandmarkerPromise = null;
+async function getPoseLandmarker() {
+  if (poseLandmarkerPromise) return poseLandmarkerPromise;
+  poseLandmarkerPromise = (async () => {
+    const vision = await getVisionFileset();
+    const modelPath = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+    try {
+      return await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: modelPath, delegate: 'GPU' },
+        runningMode: 'VIDEO',
+        numPoses: 1,
+      });
+    } catch (e) {
+      return await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: modelPath, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numPoses: 1,
+      });
+    }
+  })();
+  return poseLandmarkerPromise;
+}
+
+let faceLandmarker = null;
+let faceLandmarkerPromise = null;
+async function getFaceLandmarker() {
+  if (faceLandmarkerPromise) return faceLandmarkerPromise;
+  faceLandmarkerPromise = (async () => {
+    const vision = await getVisionFileset();
+    const modelPath = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+    try {
+      return await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: modelPath, delegate: 'GPU' },
+        runningMode: 'VIDEO',
+        numFaces: 1,
+      });
+    } catch (e) {
+      return await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: modelPath, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numFaces: 1,
+      });
+    }
+  })();
+  return faceLandmarkerPromise;
+}
+
+function showScreen(el) {
+  [startScreen, loadingScreen, errorScreen].forEach(s => { s.hidden = (s !== el); });
+}
+
+async function startPlay() {
+  const alreadyRunning = stream && stream.active && video;
+  const needsFaceLoad = mode === 'ocean' && !faceLandmarker;
+
+  if (!alreadyRunning || needsFaceLoad) {
+    showScreen(loadingScreen);
+  }
+
+  if (!alreadyRunning) {
+    loadingText.textContent = 'Waking up the camera...';
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+    } catch (e) {
+      showScreen(errorScreen);
+      errorText.textContent = 'We need camera access to play. Please allow the camera for this page and try again.';
+      return;
+    }
+
+    video = document.createElement('video');
+    video.playsInline = true;
+    video.muted = true;
+    video.srcObject = stream;
+    await video.play();
+
+    loadingText.textContent = 'Loading the movement magic...';
+    try {
+      poseLandmarker = await getPoseLandmarker();
+    } catch (e) {
+      showScreen(errorScreen);
+      errorText.textContent = "Couldn't load the movement tracker. Check your internet connection and try again.";
+      stopCamera();
+      return;
+    }
+  }
+
+  if (mode === 'ocean' && !faceLandmarker) {
+    loadingText.textContent = 'Loading mouth tracking...';
+    try {
+      faceLandmarker = await getFaceLandmarker();
+    } catch (e) {
+      faceLandmarker = null;
+    }
+  }
+
+  for (const i of TRACKED) delete smoothed[i];
+  haveAnySmoothed = false;
+  bubbles = [];
+  particles = [];
+  shockwaves = [];
+  sabreTrailL = [];
+  sabreTrailR = [];
+  brushPos = [null, null];
+  waterBubbles = [];
+  mouthOpen = false;
+  mouthPos = null;
+  biteTriggered = false;
+  hideWin();
+  initFish();
+  initBubbles();
+  initTrucks();
+  initRace();
+  resizeCanvas();
+  delete hint.dataset.set;
+
+  startScreen.hidden = true;
+  loadingScreen.hidden = true;
+  errorScreen.hidden = true;
+  game.classList.add('show');
+  homeBtn.classList.add('show');
+  clearBtn.classList.toggle('show', mode === 'paint');
+  paintPalette.classList.toggle('show', mode === 'paint');
+  saberPalette.classList.toggle('show', mode === 'saber');
+  truckHud.classList.toggle('show', mode === 'trucks');
+  updateFsBtn();
+
+  lastT = performance.now();
+  rafId = requestAnimationFrame(frame);
+}
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video = null;
+}
+
+function goHome() {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = null;
+  game.classList.remove('show');
+  homeBtn.classList.remove('show');
+  clearBtn.classList.remove('show');
+  paintPalette.classList.remove('show');
+  saberPalette.classList.remove('show');
+  truckHud.classList.remove('show');
+  hideWin();
+  showScreen(startScreen);
+}
+
+clearBtn.addEventListener('click', clearPaint);
+
+modeSelect.addEventListener('click', (e) => {
+  const btn = e.target.closest('.choice-btn');
+  if (!btn) return;
+  [...modeSelect.children].forEach(c => c.classList.remove('selected'));
+  btn.classList.add('selected');
+  mode = btn.dataset.mode;
+});
+
+paintPalette.addEventListener('click', (e) => {
+  const btn = e.target.closest('.swatch');
+  if (!btn) return;
+  [...paintPalette.children].forEach(c => c.classList.remove('selected'));
+  btn.classList.add('selected');
+  paintColor = btn.dataset.color;
+});
+
+saberPalette.addEventListener('click', (e) => {
+  const btn = e.target.closest('.swatch');
+  if (!btn) return;
+  [...saberPalette.children].forEach(c => c.classList.remove('selected'));
+  btn.classList.add('selected');
+  saberHue = Number(btn.dataset.hue);
+});
+
+startBtn.addEventListener('click', startPlay);
+retryBtn.addEventListener('click', startPlay);
+homeBtn.addEventListener('click', goHome);
+
+function requestFS(el) {
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (req) { try { req.call(el); } catch (e) {} }
+}
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+function updateFsBtn() {
+  fsBtn.classList.toggle('show', !isFullscreen());
+}
+fsBtn.addEventListener('click', () => requestFS(document.documentElement));
+document.addEventListener('fullscreenchange', updateFsBtn);
+document.addEventListener('webkitfullscreenchange', updateFsBtn);
+
+resizeCanvas();
+</script>
+</body>
+</html>
