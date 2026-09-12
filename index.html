@@ -958,6 +958,25 @@ function drawCursorRing(x, y, r, alpha = 1) {
   ctx.restore();
 }
 
+function drawMouthStripe(x, y, width, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.beginPath();
+  ctx.moveTo(x - width / 2, y);
+  ctx.lineTo(x + width / 2, y);
+  ctx.stroke();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(x - width / 2, y);
+  ctx.lineTo(x + width / 2, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawPaint(pts, tips) {
   ensurePaintCanvas();
   resizePaintCanvasIfNeeded();
@@ -1201,7 +1220,10 @@ function drawOcean(pts, tips, dt, now) {
   updateWaterBubbles(dt);
   drawWaterBubbles();
 
-  if (mouthPos) drawCursorRing(mouthPos[0], mouthPos[1], mouthOpen ? 70 : 20, 0.16);
+  if (mouthPos) {
+    if (mouthOpen) drawCursorRing(mouthPos[0], mouthPos[1], 70, 0.16);
+    else drawMouthStripe(mouthPos[0], mouthPos[1], 50, 0.16);
+  }
 }
 
 /* ---------- drawing helpers ---------- */
