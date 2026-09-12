@@ -209,13 +209,6 @@
     z-index: 20;
   }
   .mini-palette.show { display: flex; }
-  #truck-hud {
-    gap: 16px;
-    padding: 8px 18px;
-    font-size: 17px;
-    font-weight: 800;
-    color: #fff;
-  }
   .swatch {
     width: 24px;
     height: 24px;
@@ -322,8 +315,6 @@
         <button class="choice-btn" data-mode="saber">&#9876;&#65039;<span>Lightsaber</span></button>
         <button class="choice-btn" data-mode="paint">&#127912;<span>Color Paint</span></button>
         <button class="choice-btn" data-mode="ocean">&#128032;<span>Fish Tank</span></button>
-        <button class="choice-btn" data-mode="trucks">&#128667;<span>Truck Derby</span></button>
-        <button class="choice-btn" data-mode="race">&#127937;<span>Truck Race</span></button>
       </div>
     </div>
 
@@ -361,10 +352,6 @@
       <button class="swatch" data-hue="50" style="background:hsl(50,95%,55%)"></button>
       <button class="swatch" data-hue="140" style="background:hsl(140,85%,45%)"></button>
     </div>
-    <div id="truck-hud" class="mini-palette">
-      <span id="truck-score-red">&#128308; 0</span>
-      <span id="truck-score-blue">&#128309; 0</span>
-    </div>
     <div id="hint"></div>
     <canvas id="stage"></canvas>
     <div id="win-banner" hidden>
@@ -394,9 +381,6 @@ const homeBtn = document.getElementById('home-btn');
 const clearBtn = document.getElementById('clear-btn');
 const paintPalette = document.getElementById('paint-palette');
 const saberPalette = document.getElementById('saber-palette');
-const truckHud = document.getElementById('truck-hud');
-const truckScoreRed = document.getElementById('truck-score-red');
-const truckScoreBlue = document.getElementById('truck-score-blue');
 const winBanner = document.getElementById('win-banner');
 const winCard = document.getElementById('win-card');
 const winTitle = document.getElementById('win-title');
@@ -456,8 +440,6 @@ const HINTS = {
   saber: 'Move your hands to swing your lightsabers!',
   paint: 'Move your hands to paint the whole screen with color!',
   ocean: 'Blow bubbles, shoo fish with your hands and feet, or open your mouth to eat one!',
-  trucks: 'Drive your trucks with each hand and collect the coins!',
-  race: 'Move each hand left and right to dodge — when time runs out, hold your hand up high to win!',
 };
 
 /* ---------- landmark indices ---------- */
@@ -1222,474 +1204,6 @@ function drawOcean(pts, tips, dt, now) {
   if (mouthPos) drawCursorRing(mouthPos[0], mouthPos[1], mouthOpen ? 70 : 20, 0.16);
 }
 
-/* ---------- truck race ---------- */
-const TRUCK_HUES = [0, 210];
-const TRUCK_COLORS = ['#ef4444', '#3b82f6'];
-let truckPos = [null, null];
-let truckTarget = [null, null];
-let truckVel = [[0, 0], [0, 0]];
-let truckAngle = [0, 0];
-let truckScore = [0, 0];
-let coins = [];
-let crashReady = true;
-let trucksWinShown = false;
-
-function randomCoin() {
-  return {
-    x: 60 + Math.random() * (cssW - 120),
-    y: 100 + Math.random() * (cssH - 220),
-    phase: Math.random() * Math.PI * 2,
-  };
-}
-
-function initTrucks() {
-  truckPos = [null, null];
-  truckTarget = [null, null];
-  truckVel = [[0, 0], [0, 0]];
-  truckAngle = [0, 0];
-  truckScore = [0, 0];
-  crashReady = true;
-  trucksWinShown = false;
-  coins = [];
-  const count = cssW < 700 ? 10 : 14;
-  for (let i = 0; i < count; i++) coins.push(randomCoin());
-}
-
-function roundRectPath(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-function drawCoin(c) {
-  const y = c.y + Math.sin(c.phase) * 4;
-  ctx.save();
-  ctx.translate(c.x, y);
-  ctx.shadowColor = 'hsl(46, 95%, 65%)';
-  ctx.shadowBlur = 14;
-  const grad = ctx.createRadialGradient(-5, -5, 2, 0, 0, 16);
-  grad.addColorStop(0, '#fff6d0');
-  grad.addColorStop(0.6, '#fbbf24');
-  grad.addColorStop(1, '#b45309');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(0, 0, 16, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function lerpAngle(a, b, t) {
-  let diff = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
-  return a + diff * t;
-}
-
-function updateTruck(idx, tipPt, dt, scale) {
-  if (!tipPt) return;
-
-  if (!truckTarget[idx]) {
-    truckTarget[idx] = [tipPt[0], tipPt[1]];
-  } else {
-    const tf = Math.min(1, dt * 9);
-    truckTarget[idx][0] += (tipPt[0] - truckTarget[idx][0]) * tf;
-    truckTarget[idx][1] += (tipPt[1] - truckTarget[idx][1]) * tf;
-  }
-
-  if (!truckPos[idx]) {
-    truckPos[idx] = [truckTarget[idx][0], truckTarget[idx][1]];
-    return;
-  }
-
-  const stiffness = 34, damping = 13;
-  const dx = truckTarget[idx][0] - truckPos[idx][0], dy = truckTarget[idx][1] - truckPos[idx][1];
-  const vx = truckVel[idx][0], vy = truckVel[idx][1];
-  const ax = dx * stiffness - vx * damping;
-  const ay = dy * stiffness - vy * damping;
-  truckVel[idx][0] += ax * dt;
-  truckVel[idx][1] += ay * dt;
-  const spd = Math.hypot(truckVel[idx][0], truckVel[idx][1]);
-  const maxSpd = 620 * scale;
-  if (spd > maxSpd) {
-    truckVel[idx][0] = truckVel[idx][0] / spd * maxSpd;
-    truckVel[idx][1] = truckVel[idx][1] / spd * maxSpd;
-  }
-  truckPos[idx][0] += truckVel[idx][0] * dt;
-  truckPos[idx][1] += truckVel[idx][1] * dt;
-  if (spd > 18) {
-    const targetAngle = Math.atan2(truckVel[idx][1], truckVel[idx][0]);
-    truckAngle[idx] = lerpAngle(truckAngle[idx], targetAngle, Math.min(1, dt * 6));
-  }
-}
-
-function drawTruckShape(x, y, angle, hue, scale) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.scale(scale, scale);
-  const w = 46, h = 30;
-  const wheelW = 16, wheelH = 10, wheelR = 4;
-  ctx.fillStyle = '#161616';
-  [[-w * 0.36, -h * 0.62], [w * 0.36, -h * 0.62], [-w * 0.36, h * 0.62], [w * 0.36, h * 0.62]].forEach(([wx, wy]) => {
-    roundRectPath(wx - wheelW / 2, wy - wheelH / 2, wheelW, wheelH, wheelR);
-    ctx.fill();
-  });
-  ctx.shadowColor = `hsl(${hue}, 90%, 60%)`;
-  ctx.shadowBlur = 14;
-  ctx.fillStyle = `hsl(${hue}, 85%, 55%)`;
-  roundRectPath(-w / 2, -h / 2, w, h, 10);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  roundRectPath(w * 0.05, -h * 0.28, w * 0.32, h * 0.56, 4);
-  ctx.fill();
-  ctx.restore();
-}
-
-function updateCoinPickup(now, scale) {
-  const hitR = 40 * scale;
-  for (let ti = 0; ti < 2; ti++) {
-    const tp = truckPos[ti];
-    if (!tp) continue;
-    coins = coins.filter(c => {
-      const dx = tp[0] - c.x, dy = tp[1] - (c.y + Math.sin(c.phase) * 4);
-      if (dx * dx + dy * dy < hitR * hitR) {
-        truckScore[ti]++;
-        spawnBurst(c.x, c.y, TRUCK_HUES[ti], 12);
-        playPop();
-        return false;
-      }
-      return true;
-    });
-  }
-  if (coins.length === 0 && !trucksWinShown) {
-    trucksWinShown = true;
-    if (truckScore[0] > truckScore[1]) {
-      showWin('Red is the winner!', `🔴 ${truckScore[0]} to ${truckScore[1]} 🔵`, initTrucks, TRUCK_COLORS[0]);
-    } else if (truckScore[1] > truckScore[0]) {
-      showWin('Blue is the winner!', `🔵 ${truckScore[1]} to ${truckScore[0]} 🔴`, initTrucks, TRUCK_COLORS[1]);
-    } else {
-      showWin("It's a tie!", `🔴 ${truckScore[0]} — ${truckScore[1]} 🔵`, initTrucks, '#a78bfa');
-    }
-  }
-}
-
-function spawnCrashEffect(x, y, scale) {
-  for (let i = 0; i < 26; i++) {
-    const ang = Math.random() * Math.PI * 2;
-    const spd = (120 + Math.random() * 260) * scale;
-    const isSpark = Math.random() < 0.4;
-    particles.push({
-      x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 40,
-      life: 0, maxLife: 0.35 + Math.random() * 0.3,
-      size: (isSpark ? 3 : 5) + Math.random() * 4,
-      hue: isSpark ? 42 : 0,
-      sat: isSpark ? 90 : 6,
-      light: isSpark ? 62 : 30 + Math.random() * 20,
-    });
-  }
-  shockwaves.push({ x, y, r: 4, maxR: 90 * scale, t: 0, maxAge: 0.22, hue: 48 });
-  shockwaves.push({ x, y, r: 4, maxR: 60 * scale, t: 0, maxAge: 0.15, hue: 0 });
-}
-
-function playCrash() {
-  if (!audioCtx) return;
-  const t = audioCtx.currentTime;
-  const osc1 = audioCtx.createOscillator();
-  const gain1 = audioCtx.createGain();
-  osc1.type = 'square';
-  osc1.frequency.setValueAtTime(140, t);
-  osc1.frequency.exponentialRampToValueAtTime(50, t + 0.18);
-  gain1.gain.setValueAtTime(0.3, t);
-  gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-  osc1.connect(gain1).connect(audioCtx.destination);
-  osc1.start(t);
-  osc1.stop(t + 0.22);
-  [1600, 2200].forEach((freq, i) => {
-    const osc2 = audioCtx.createOscillator();
-    const gain2 = audioCtx.createGain();
-    osc2.type = 'square';
-    osc2.frequency.setValueAtTime(freq, t);
-    gain2.gain.setValueAtTime(0.06, t);
-    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.08 + i * 0.02);
-    osc2.connect(gain2).connect(audioCtx.destination);
-    osc2.start(t);
-    osc2.stop(t + 0.1 + i * 0.02);
-  });
-}
-
-function updateCrash(now, scale) {
-  if (!truckPos[0] || !truckPos[1]) return;
-  const dx = truckPos[0][0] - truckPos[1][0], dy = truckPos[0][1] - truckPos[1][1];
-  const dist = Math.hypot(dx, dy);
-  if (dist < 46 * scale && crashReady) {
-    crashReady = false;
-    const mx = (truckPos[0][0] + truckPos[1][0]) / 2, my = (truckPos[0][1] + truckPos[1][1]) / 2;
-    spawnCrashEffect(mx, my, scale);
-    playCrash();
-    const nx = dx / (dist || 1), ny = dy / (dist || 1);
-    truckPos[0][0] += nx * 18; truckPos[0][1] += ny * 18;
-    truckPos[1][0] -= nx * 18; truckPos[1][1] -= ny * 18;
-  } else if (dist > 90 * scale) {
-    crashReady = true;
-  }
-}
-
-function drawTrucks(pts, tips, dt, now) {
-  const shoulderDist = (pts[L_SHOULDER] && pts[R_SHOULDER])
-    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
-    : 140;
-  const scale = shoulderDist / 140;
-
-  updateTruck(0, tips[R_WRIST], dt, scale);
-  updateTruck(1, tips[L_WRIST], dt, scale);
-  updateCoinPickup(now, scale);
-  updateCrash(now, scale);
-
-  for (const c of coins) c.phase += dt * 2;
-  for (const c of coins) drawCoin(c);
-  if (truckPos[0]) drawTruckShape(truckPos[0][0], truckPos[0][1], truckAngle[0], TRUCK_HUES[0], scale);
-  if (truckPos[1]) drawTruckShape(truckPos[1][0], truckPos[1][1], truckAngle[1], TRUCK_HUES[1], scale);
-
-  truckScoreRed.textContent = `🔴 ${truckScore[0]}`;
-  truckScoreBlue.textContent = `🔵 ${truckScore[1]}`;
-}
-
-/* ---------- truck race (scrolling dodge, timed) ---------- */
-const RACE_COUNTDOWN = 3;
-const RACE_DURATION = 30;
-const RACE_SPEED = 260;
-let smokePuffs = [];
-let raceState = 'countdown';
-let raceTimer = RACE_COUNTDOWN;
-let raceScroll = 0;
-let raceObstacles = [];
-let raceObstacleTimer = 0;
-let raceHandY = [null, null];
-
-function initRace() {
-  raceState = 'countdown';
-  raceTimer = RACE_COUNTDOWN;
-  raceScroll = 0;
-  raceObstacles = [];
-  raceObstacleTimer = 1;
-  raceHandY = [null, null];
-  smokePuffs = [];
-  crashReady = true;
-  truckVel = [[0, 0], [0, 0]];
-  truckTarget = [null, null];
-  truckAngle = [-Math.PI / 2, -Math.PI / 2];
-  truckPos = [
-    [cssW * 0.75, cssH * 0.85],
-    [cssW * 0.25, cssH * 0.85],
-  ];
-}
-
-function spawnSmoke(x, y, vx, vy) {
-  smokePuffs.push({
-    x, y,
-    vx: vx + (Math.random() - 0.5) * 10,
-    vy: vy + (Math.random() - 0.5) * 10 - 6,
-    r: 5 + Math.random() * 3,
-    life: 0, maxLife: 0.6 + Math.random() * 0.4,
-  });
-}
-function updateSmoke(dt) {
-  for (const s of smokePuffs) {
-    s.life += dt;
-    s.x += s.vx * dt;
-    s.y += s.vy * dt;
-    s.vx *= 0.96;
-    s.vy *= 0.96;
-    s.r += dt * 22;
-  }
-  smokePuffs = smokePuffs.filter(s => s.life < s.maxLife);
-  if (smokePuffs.length > 300) smokePuffs.splice(0, smokePuffs.length - 300);
-}
-function drawSmoke() {
-  for (const s of smokePuffs) {
-    const t = 1 - s.life / s.maxLife;
-    ctx.save();
-    ctx.globalAlpha = t * 0.35;
-    ctx.fillStyle = '#c9c9c9';
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-}
-
-function drawRaceLanes(moving, dt) {
-  if (moving) raceScroll = (raceScroll + dt * RACE_SPEED) % 40;
-  ctx.fillStyle = 'rgba(35,35,42,0.65)';
-  ctx.fillRect(0, 0, cssW, cssH);
-  ctx.save();
-  ctx.setLineDash([22, 18]);
-  ctx.lineDashOffset = -raceScroll;
-  ctx.strokeStyle = 'rgba(250,220,80,0.85)';
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(cssW / 2, 0);
-  ctx.lineTo(cssW / 2, cssH);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 3;
-  [cssW * 0.25, cssW * 0.75].forEach(lx => {
-    ctx.beginPath();
-    ctx.moveTo(lx, 0);
-    ctx.lineTo(lx, cssH);
-    ctx.stroke();
-  });
-  ctx.restore();
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(10, 0); ctx.lineTo(10, cssH);
-  ctx.moveTo(cssW - 10, 0); ctx.lineTo(cssW - 10, cssH);
-  ctx.stroke();
-
-  const check = 14;
-  for (let i = 0; i < Math.ceil(cssW / check); i++) {
-    ctx.fillStyle = (i % 2 === 0) ? '#fff' : '#111';
-    ctx.fillRect(i * check, 34, check, 16);
-  }
-}
-
-function drawCenteredText(text, size, y) {
-  ctx.save();
-  ctx.translate(cssW / 2, y);
-  ctx.scale(-1, 1);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `900 ${size}px -apple-system, sans-serif`;
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
-  ctx.shadowBlur = 18;
-  ctx.fillStyle = '#fff';
-  ctx.fillText(text, 0, 0);
-  ctx.restore();
-}
-
-function spawnObstacle() {
-  raceObstacles.push({
-    x: 50 + Math.random() * (cssW - 100),
-    y: -30,
-    size: 16 + Math.random() * 8,
-  });
-}
-
-function drawObstacle(o) {
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  ctx.shadowColor = 'hsl(28, 90%, 55%)';
-  ctx.shadowBlur = 10;
-  ctx.fillStyle = 'hsl(28, 90%, 52%)';
-  ctx.beginPath();
-  ctx.moveTo(0, -o.size);
-  ctx.lineTo(o.size * 0.8, o.size * 0.7);
-  ctx.lineTo(-o.size * 0.8, o.size * 0.7);
-  ctx.closePath();
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.fillRect(-o.size * 0.5, o.size * 0.1, o.size, o.size * 0.18);
-  ctx.restore();
-}
-
-function updateRaceTruck(idx, tipPt, dt, scale) {
-  if (tipPt) raceHandY[idx] = tipPt[1];
-  if (!tipPt) return;
-  if (!truckPos[idx]) {
-    truckPos[idx] = [tipPt[0], tipPt[1]];
-  } else {
-    const dist = Math.hypot(tipPt[0] - truckPos[idx][0], tipPt[1] - truckPos[idx][1]);
-    const f = dist < 5 * scale ? 0.25 : 0.55;
-    truckPos[idx][0] += (tipPt[0] - truckPos[idx][0]) * f;
-    truckPos[idx][1] += (tipPt[1] - truckPos[idx][1]) * f;
-  }
-  truckAngle[idx] = -Math.PI / 2;
-}
-
-function finishRace() {
-  raceState = 'finished';
-  const ry = raceHandY[0], by = raceHandY[1];
-  if (ry != null && by != null && Math.abs(ry - by) > 8) {
-    if (ry < by) showWin('Red is the winner!', '🔴 held their hand higher!', initRace, TRUCK_COLORS[0]);
-    else showWin('Blue is the winner!', '🔵 held their hand higher!', initRace, TRUCK_COLORS[1]);
-  } else if (ry != null && by == null) {
-    showWin('Red is the winner!', '🔴 held their hand higher!', initRace, TRUCK_COLORS[0]);
-  } else if (by != null && ry == null) {
-    showWin('Blue is the winner!', '🔵 held their hand higher!', initRace, TRUCK_COLORS[1]);
-  } else {
-    showWin("It's a tie!", 'Both hands were the same height!', initRace, '#a78bfa');
-  }
-}
-
-function drawRace(pts, tips, dt, now) {
-  const shoulderDist = (pts[L_SHOULDER] && pts[R_SHOULDER])
-    ? Math.hypot(pts[L_SHOULDER][0] - pts[R_SHOULDER][0], pts[L_SHOULDER][1] - pts[R_SHOULDER][1])
-    : 140;
-  const scale = shoulderDist / 140;
-
-  drawRaceLanes(raceState === 'racing', dt);
-
-  updateRaceTruck(0, tips[R_WRIST], dt, scale);
-  updateRaceTruck(1, tips[L_WRIST], dt, scale);
-
-  if (raceState === 'countdown') {
-    raceTimer -= dt;
-    if (raceTimer <= 0) {
-      raceState = 'racing';
-      raceTimer = RACE_DURATION;
-    } else {
-      drawCenteredText(String(Math.ceil(raceTimer)), 130, cssH / 2);
-    }
-  } else if (raceState === 'racing') {
-    raceTimer -= dt;
-    raceObstacleTimer -= dt;
-    if (raceObstacleTimer <= 0) {
-      raceObstacleTimer = 0.5 + Math.random() * 0.4;
-      spawnObstacle();
-    }
-    for (const o of raceObstacles) o.y += RACE_SPEED * dt * scale;
-    for (const o of raceObstacles) {
-      if (o.hit) continue;
-      for (let ti = 0; ti < 2; ti++) {
-        const tp = truckPos[ti];
-        if (!tp) continue;
-        const dx = tp[0] - o.x, dy = tp[1] - o.y;
-        if (dx * dx + dy * dy < (34 * scale) * (34 * scale)) {
-          o.hit = true;
-          spawnBurst(o.x, o.y, TRUCK_HUES[ti], 8);
-          playPop();
-          break;
-        }
-      }
-    }
-    raceObstacles = raceObstacles.filter(o => !o.hit && o.y < cssH + 40);
-    for (const o of raceObstacles) drawObstacle(o);
-    drawCenteredText(String(Math.ceil(raceTimer)), 40, 50);
-    if (raceTimer <= 0) finishRace();
-  }
-
-  for (let ti = 0; ti < 2; ti++) {
-    if (truckPos[ti] && Math.random() < 0.5) {
-      const rearX = truckPos[ti][0] - Math.cos(truckAngle[ti]) * 26 * scale;
-      const rearY = truckPos[ti][1] - Math.sin(truckAngle[ti]) * 26 * scale;
-      spawnSmoke(rearX, rearY, -Math.cos(truckAngle[ti]) * 20, -Math.sin(truckAngle[ti]) * 20);
-    }
-  }
-  updateSmoke(dt);
-  drawSmoke();
-
-  if (truckPos[0]) drawTruckShape(truckPos[0][0], truckPos[0][1], truckAngle[0], TRUCK_HUES[0], scale);
-  if (truckPos[1]) drawTruckShape(truckPos[1][0], truckPos[1][1], truckAngle[1], TRUCK_HUES[1], scale);
-}
-
 /* ---------- drawing helpers ---------- */
 function drawGlowDot(x, y, r, color) {
   ctx.save();
@@ -1866,10 +1380,6 @@ function frame(now) {
         drawPaint(pts, tips);
       } else if (mode === 'ocean') {
         drawOcean(pts, tips, dt, now);
-      } else if (mode === 'trucks') {
-        drawTrucks(pts, tips, dt, now);
-      } else if (mode === 'race') {
-        drawRace(pts, tips, dt, now);
       }
     } else if (mode === 'bubbles') {
       drawBubbles();
@@ -1877,18 +1387,14 @@ function frame(now) {
       ctx.drawImage(paintCanvas, 0, 0, cssW, cssH);
     } else if (mode === 'ocean') {
       drawOcean({}, {}, dt, now);
-    } else if (mode === 'trucks') {
-      drawTrucks({}, {}, dt, now);
-    } else if (mode === 'race') {
-      drawRace({}, {}, dt, now);
     }
   }
 
-  if (mode === 'bubbles' || mode === 'sparkle' || mode === 'ocean' || mode === 'trucks' || mode === 'race') {
+  if (mode === 'bubbles' || mode === 'sparkle' || mode === 'ocean') {
     updateParticles(dt);
     drawParticles();
   }
-  if (mode === 'sparkle' || mode === 'bubbles' || mode === 'ocean' || mode === 'trucks' || mode === 'race') {
+  if (mode === 'sparkle' || mode === 'bubbles' || mode === 'ocean') {
     updateShockwaves(dt);
     drawShockwaves();
   }
@@ -2023,8 +1529,6 @@ async function startPlay() {
   hideWin();
   initFish();
   initBubbles();
-  initTrucks();
-  initRace();
   resizeCanvas();
   delete hint.dataset.set;
 
@@ -2036,7 +1540,6 @@ async function startPlay() {
   clearBtn.classList.toggle('show', mode === 'paint');
   paintPalette.classList.toggle('show', mode === 'paint');
   saberPalette.classList.toggle('show', mode === 'saber');
-  truckHud.classList.toggle('show', mode === 'trucks');
   updateFsBtn();
 
   lastT = performance.now();
@@ -2056,7 +1559,6 @@ function goHome() {
   clearBtn.classList.remove('show');
   paintPalette.classList.remove('show');
   saberPalette.classList.remove('show');
-  truckHud.classList.remove('show');
   hideWin();
   showScreen(startScreen);
 }
